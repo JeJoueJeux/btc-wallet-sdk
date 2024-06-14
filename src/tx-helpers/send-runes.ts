@@ -134,3 +134,44 @@ export async function sendRunes({
 
   return { psbt, toSignInputs };
 }
+
+
+export async function psbtForRuneMint({  
+  btcUtxos, 
+  tos,
+  changeAddress,
+  feeRate,
+  tapscript
+  }: {
+    btcUtxos: UnspentOutput[]; 
+    tos: UnspentOutput[]; 
+    changeAddress: string;
+    feeRate: number; 
+    tapscript: string;
+  }) 
+{ 
+  if (utxoHelper.hasAnyAssets(btcUtxos)) {
+    throw new WalletUtilsError(ErrorCodes.NOT_SAFE_UTXOS);
+  }
+
+  const networkType = 0; // mainnet 
+  const enableRBF = true;
+
+  const tx = new Transaction();
+  tx.setNetworkType(networkType);
+  tx.setFeeRate(feeRate);
+  tx.setEnableRBF(enableRBF);
+  tx.setChangeAddress(changeAddress);
+
+  tos.forEach((v) => {
+    tx.addOutput((v as any).address, v.satoshis);
+  })
+
+  tx.addScriptOutput(Buffer.from(tapscript, "hex"), 0);
+  
+  const { toSignInputs, networkFee } = await tx.addSufficientUtxosForMintingRune(btcUtxos);
+
+  const psbt = tx.toPsbt();
+
+  return { psbt, toSignInputs, networkFee };
+}

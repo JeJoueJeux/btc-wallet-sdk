@@ -369,6 +369,46 @@ export class Transaction {
     return this._cacheToSignInputs;
   }
 
+  async addSufficientUtxosForMintingRune(btcUtxos: UnspentOutput[]) {
+    if (btcUtxos.length == 0) {
+      throw new Error("btcUtxos is empty");
+    }
+    this._cacheBtcUtxos = btcUtxos;
+    const dummyBtcUtxo = Object.assign({}, btcUtxos[0]);
+    dummyBtcUtxo.satoshis = 2100000000000000;
+    this.addInput(dummyBtcUtxo);
+    this.addChangeOutput(0);
+
+    const networkFee = await this.calNetworkFee();
+    
+    for (let i = 0; i < this.outputs.length; i++) {
+      let v = this.outputs[i].value;
+      if (v > 546) {
+        this.outputs[i].value -= networkFee; 
+        break;
+      }
+    }
+
+    const dummyBtcUtxoSize = utxoHelper.getAddedVirtualSize(
+      dummyBtcUtxo.addressType
+    );
+    this._cacheNetworkFee = networkFee - dummyBtcUtxoSize * this.feeRate;
+
+    this.removeLastInput();
+
+    this.selectBtcUtxos();
+
+    const changeAmount = this.getTotalInput() - this.getTotalOutput() - Math.ceil(this._cacheNetworkFee);
+    if (changeAmount > UTXO_DUST) {
+      this.removeChangeOutput();
+      this.addChangeOutput(changeAmount);
+    } else {
+      this.removeChangeOutput();
+    }
+
+    return {"toSignInputs": this._cacheToSignInputs, networkFee};
+  }
+
   async dumpTx(psbt) {
     const tx = psbt.extractTransaction();
     const feeRate = psbt.getFeeRate();
